@@ -1,0 +1,157 @@
+package com.example.demo.service.Impl;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.example.demo.config.CloudinaryConfig;
+import com.example.demo.dto.req.UpdateUserRequest;
+import com.example.demo.dto.res.UserPrivateProfile;
+import com.example.demo.dto.res.UserPublicDTO;
+import com.example.demo.dto.res.UserResponse;
+import com.example.demo.enums.Gender;
+import com.example.demo.event.UserDeleteEvent;
+import com.example.demo.event.UserRegisteredEvent;
+import com.example.demo.exception.UserException;
+import com.example.demo.model.User;
+import com.example.demo.repo.UserRepository;
+import com.example.demo.service.UserService;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class UserServiceImpl implements UserService {
+
+    private final UserRepository userRepository;
+    private final KafkaTemplate<String, UserDeleteEvent> kafkaTemplate;
+    private final CloudinaryConfig cloudinaryConfig;
+
+    @Override
+    @KafkaListener(topics = "user-registered", groupId = "User", containerFactory = "kafkaListenerContainerFactory")
+    public void handleUserRegister(UserRegisteredEvent event) {
+        System.out.println("Received event from Kafka: " + event);
+        try {
+            User user = User.builder()
+                    .id(event.getId())
+                    .fName(event.getFName())
+                    .lName(event.getLName())
+                    .dob(event.getDob())
+                    .gender(event.getGender() != null ? Gender.valueOf(event.getGender()) : null)
+                    .avatar(event.getAvatar())
+                    .createdAt(event.getCreatedAt())
+                    .email(event.getEmail())
+                    .phone(event.getPhone())
+                    .build();
+            if (!userRepository.existsById(user.getId())) {
+                userRepository.save(user);
+            }
+        } catch (Exception e) {
+            throw new UserException(e.getMessage());
+        }
+    }
+
+    @Override
+    public UserResponse update(String id, UpdateUserRequest req) {
+        User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
+
+        if (req.getFName() != null)
+            user.setFName(req.getFName());
+        if (req.getLName() != null)
+            user.setLName(req.getLName());
+        if (req.getGender() != null)
+            user.setGender(req.getGender());
+        if (req.getBio() != null)
+            user.setBio(req.getBio());
+        if (req.getDob() != null)
+            user.setDob(req.getDob());
+
+        return new UserResponse(true, "Cập nhật thành công", convertTPublicDTO(userRepository.save(user)));
+    }
+
+    @Override
+    public void delete(String id) {
+        userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
+        userRepository.deleteById(id);
+
+        // Gửi sự kiện kafka xóa người dùng đến message
+        kafkaTemplate.send("user-deleted", new UserDeleteEvent(id));
+    }
+
+    @Override
+    public UserResponse getById(String id) {
+        User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
+        return new UserResponse(true, "Lấy thành công", convertTPublicDTO(user));
+    }
+
+    @Override
+    public List<UserResponse> getAll() {
+        return userRepository.findAll().stream()
+                .map(user -> new UserResponse(true, "Lấy thành công", convertTPublicDTO(user)))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<UserResponse> findByFirstName(String fName) {
+        return userRepository.findByFirstName(fName).stream()
+                .map(user -> new UserResponse(true, "Lấy thành công", convertTPublicDTO(user)))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<UserResponse> findByLastName(String lName) {
+        return userRepository.findByLastName(lName).stream()
+                .map(user -> new UserResponse(true, "Lấy thành công", convertTPublicDTO(user)))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public UserPrivateProfile getMyInfo() {
+        String id = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
+        return new UserPrivateProfile(true, "Lấy thành công", convertTPublicDTO(user), user.getEmail(),
+                user.getPhone());
+    }
+
+    private UserPublicDTO convertTPublicDTO(User user) {
+        return new UserPublicDTO(
+                user.getId(),
+                user.getFName(),
+                user.getLName(),
+                user.getAvatar(),
+                user.getBio(),
+                user.getBackground(),
+                user.getDob(),
+                user.getGender());
+    }
+
+    @Override
+    public UserResponse updateAvatar(String id, MultipartFile file) {
+        User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
+        try {
+            String avatar = cloudinaryConfig.uploadFile(file);
+            user.setAvatar(avatar);
+        } catch (Exception e) {
+            throw new UserException("Cập nhật ảnh đại diện thất bại");
+        }
+        return new UserResponse(true, "Cập nhật thành công", convertTPublicDTO(userRepository.save(user)));
+    }
+
+    @Override
+    public UserResponse updateBackground(String id, MultipartFile file) {
+        User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
+        try {
+            String background = cloudinaryConfig.uploadFile(file);
+            user.setBackground(background);
+        } catch (Exception e) {
+            throw new UserException("Cập nhật ảnh nền thất bại");
+        }
+        return new UserResponse(true, "Cập nhật thành công", convertTPublicDTO(userRepository.save(user)));
+    }
+
+}
