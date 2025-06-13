@@ -8,7 +8,5 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class UserResponse {
-    private boolean success;
-    private String message;
-    private UserPublicDTO user;
+    
 }
