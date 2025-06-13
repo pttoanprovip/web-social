@@ -21,7 +21,9 @@ import com.example.demo.dto.req.RegisterRequest;
 import com.example.demo.dto.res.LoginResponse;
 import com.example.demo.dto.res.RegisterResponse;
 import com.example.demo.event.UserDeleteEvent;
+import com.example.demo.event.UserLockedEvent;
 import com.example.demo.event.UserRegisteredEvent;
+import com.example.demo.event.UserUnlockedEvent;
 import com.example.demo.exception.AuthException;
 import com.example.demo.model.Auth;
 import com.example.demo.repo.AuthRepository;
@@ -36,7 +38,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final AuthRepository authRepository;
     private final PasswordEncoder passwordEncoder;
-    private final KafkaTemplate<String, UserRegisteredEvent> kafkaTemplate;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
     private final StringRedisTemplate redisTemplate;
 
     @NonFinal
@@ -60,6 +62,16 @@ public class AuthServiceImpl implements AuthService {
 
         if (auth == null || !passwordEncoder.matches(req.getPassword(), auth.getPassword())) {
             throw new AuthException("Thông tin đăng nhập không hợp lệ");
+        }
+
+        if(auth.getLocked() != null && auth.getLocked()){
+            if(auth.getLockedUntil() != null && auth.getLockedUntil().isAfter(LocalDate.now())){
+                throw new AuthException("Tài khoản đã bị khóa");
+            }else if(auth.getLockedUntil() != null && !auth.getLockedUntil().isAfter(LocalDate.now())){
+                auth.setLocked(false);
+                auth.setLockedUntil(null);
+                authRepository.save(auth); 
+            }
         }
 
         String token = generateToken(auth);
@@ -173,5 +185,27 @@ public class AuthServiceImpl implements AuthService {
     @KafkaListener(topics = "user-deleted", groupId = "Auth", containerFactory = "kafkaListenerContainerFactory")
     public void handleUserDelete(UserDeleteEvent event) {
         authRepository.deleteById(event.getId());
+    }
+
+    @Override
+    @KafkaListener(topics = "user-locked", groupId = "Auth", containerFactory = "kafkaListenerContainerFactory")
+    public void handleUserLocked(UserLockedEvent event) {
+        Auth auth = authRepository.findById(event.getId()).orElse(null);
+        if(auth != null){
+            auth.setLocked(true);
+            auth.setLockedUntil(event.getLockedUntil());
+            authRepository.save(auth);
+        }
+    }
+
+    @Override
+    @KafkaListener(topics = "user-unlocked" , groupId = "Auth", containerFactory = "kafkaListenerContainerFactory")
+    public void handleUserUnlocked(UserUnlockedEvent event) {
+        Auth auth = authRepository.findById(event.getId()).orElse(null);
+        if(auth != null){
+            auth.setLocked(false);
+            auth.setLockedUntil(null);
+            authRepository.save(auth);
+        }
     }
 }

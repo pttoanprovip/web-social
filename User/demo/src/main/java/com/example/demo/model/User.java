@@ -31,4 +31,6 @@ public class User {
     private LocalDate createdAt;
     private String bio;
     private String background;
+    private Boolean isLocked = false;
+    private LocalDate lockedUntil;
 }

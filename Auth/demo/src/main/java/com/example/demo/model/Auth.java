@@ -1,5 +1,7 @@
 package com.example.demo.model;
 
+import java.time.LocalDate;
+
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -21,4 +23,7 @@ public class Auth {
     private String email;
     private String password;
 
+    @Builder.Default
+    private Boolean locked = false;
+    private LocalDate lockedUntil;
 }

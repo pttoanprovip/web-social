@@ -6,6 +6,8 @@ import com.example.demo.dto.req.RegisterRequest;
 import com.example.demo.dto.res.LoginResponse;
 import com.example.demo.dto.res.RegisterResponse;
 import com.example.demo.event.UserDeleteEvent;
+import com.example.demo.event.UserLockedEvent;
+import com.example.demo.event.UserUnlockedEvent;
 
 public interface AuthService {
     LoginResponse login(LoginRequest req);
@@ -21,4 +23,8 @@ public interface AuthService {
     void changePhone(String id, String newPhone);
 
     void handleUserDelete(UserDeleteEvent event);
+
+    void handleUserLocked(UserLockedEvent event);
+
+    void handleUserUnlocked(UserUnlockedEvent event);
 }

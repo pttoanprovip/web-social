@@ -1,10 +1,12 @@
 package com.example.demo.service.Impl;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -16,7 +18,9 @@ import com.example.demo.dto.res.UserPublicDTO;
 import com.example.demo.dto.res.UserResponse;
 import com.example.demo.enums.Gender;
 import com.example.demo.event.UserDeleteEvent;
+import com.example.demo.event.UserLockedEvent;
 import com.example.demo.event.UserRegisteredEvent;
+import com.example.demo.event.UserUnlockedEvent;
 import com.example.demo.exception.UserException;
 import com.example.demo.model.User;
 import com.example.demo.repo.UserRepository;
@@ -29,7 +33,7 @@ import lombok.RequiredArgsConstructor;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
-    private final KafkaTemplate<String, UserDeleteEvent> kafkaTemplate;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
     private final CloudinaryConfig cloudinaryConfig;
 
     @Override
@@ -152,6 +156,49 @@ public class UserServiceImpl implements UserService {
             throw new UserException("Cập nhật ảnh nền thất bại");
         }
         return new UserResponse(true, "Cập nhật thành công", convertTPublicDTO(userRepository.save(user)));
+    }
+
+    @Override
+    public void lockProfile(String id) {
+        User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
+        // Tính ngày mở khóa tài khoản là 90 ngày
+        LocalDate unlockDate = LocalDate.now().plusDays(90);
+
+        user.setIsLocked(true);
+        user.setLockedUntil(unlockDate);
+        userRepository.save(user);
+
+        // gửi sự kiện kafka khóa đến message
+        kafkaTemplate.send("user-locked", new UserLockedEvent(id, unlockDate));
+    }
+
+    @Override
+    public void unlockProfile(String id) {
+        User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
+
+        user.setIsLocked(false);
+        user.setLockedUntil(null);
+
+        userRepository.save(user);
+
+        // gửi sự kiện kafka mở khóa đến message
+        kafkaTemplate.send("user-unlocked", new UserUnlockedEvent(id));
+    }
+
+    @Override
+    @Scheduled(cron = "0 0 0 * * ?")
+    public void autoUnlockExpiredAccounts() {
+        LocalDate today = LocalDate.now();
+        List<User> expiredAccounts = userRepository.findByLockedTrueAndLockedUntilBefore(today);
+        for (User user : expiredAccounts) {
+            user.setIsLocked(false);
+            user.setLockedUntil(null);
+
+            userRepository.save(user);
+
+            // gửi sự kiện kafka mở khóa đến message
+            kafkaTemplate.send("user-unlocked", new UserUnlockedEvent(user.getId()));
+        }
     }
 
 }

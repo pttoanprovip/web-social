@@ -104,4 +104,24 @@ public class UserController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    @PutMapping("/{id}/lock")
+    public ResponseEntity<?> lockProfile(@PathVariable String id) {
+        try {
+            userService.lockProfile(id);
+            return ResponseEntity.noContent().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PutMapping("/{id}/unlock")
+    public ResponseEntity<?> unlockProfile(@PathVariable String id) {
+        try {
+            userService.unlockProfile(id);
+            return ResponseEntity.noContent().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }   

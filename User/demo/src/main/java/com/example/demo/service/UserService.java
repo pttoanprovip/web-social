@@ -17,6 +17,12 @@ public interface UserService {
 
     void delete(String id);
 
+    void lockProfile(String id);
+
+    void unlockProfile(String id);
+
+    void autoUnlockExpiredAccounts();
+
     UserResponse getById(String id);
 
     List<UserResponse> getAll();

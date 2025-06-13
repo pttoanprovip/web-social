@@ -13,14 +13,12 @@ import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 
-import com.example.demo.event.UserDeleteEvent;
-
 @EnableKafka
 @Configuration
 public class KafkaConsumerConfig {
     @Bean
-    public ConsumerFactory<String, UserDeleteEvent> userDeleteEventConsumerFactory() {
-        JsonDeserializer<UserDeleteEvent> deserializer = new JsonDeserializer<>(UserDeleteEvent.class);
+    public ConsumerFactory<String, Object> consumerFactory() {
+        JsonDeserializer<Object> deserializer = new JsonDeserializer<>(Object.class);
         deserializer.addTrustedPackages("*");
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
@@ -31,9 +29,9 @@ public class KafkaConsumerConfig {
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, UserDeleteEvent> userDeleteEventKafkaListenerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, UserDeleteEvent> factory = new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(userDeleteEventConsumerFactory());
+    public ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
         return factory;
     }
 }
