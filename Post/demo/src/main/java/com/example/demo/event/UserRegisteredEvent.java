@@ -11,5 +11,5 @@ public class UserRegisteredEvent {
     private String id;
     private String fName;
     private String lName;
-    private String avatarURL;
+    private String avatar;
 }

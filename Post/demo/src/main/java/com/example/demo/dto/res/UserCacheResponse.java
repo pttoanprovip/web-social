@@ -1,17 +1,15 @@
 package com.example.demo.dto.res;
 
+import com.example.demo.model.UserCache;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 @Data
-@AllArgsConstructor
 @NoArgsConstructor
-public class UserPrivateProfile {
-
+@AllArgsConstructor
+public class UserCacheResponse {
     private boolean success;
     private String message;
-    private UserPublicDTO data;
-    private String email;
-    private String phone;
+    private UserCache data;
 }

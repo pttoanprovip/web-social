@@ -1,8 +1,10 @@
 package com.example.demo.config;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.example.demo.exception.AuthException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -35,5 +37,16 @@ public class CloudinaryConfig {
         Cloudinary cloudinary = cloudinary();
         Map uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.emptyMap());
         return uploadResult.get("url").toString();
+    }
+
+    public void deleteFIle(String url){
+        try{
+            if(url != null && url.contains("/")){
+                String publicId = url.substring(url.lastIndexOf("/") + 1, url.lastIndexOf("."));
+                cloudinary().uploader().destroy(publicId, ObjectUtils.emptyMap());
+            }
+        } catch (IOException e) {
+            throw new AuthException("Xóa thất bại: " +e.getMessage());
+        }
     }
 }
