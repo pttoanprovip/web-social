@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.example.demo.event.*;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,10 +18,6 @@ import com.example.demo.dto.res.UserPrivateProfile;
 import com.example.demo.dto.res.UserPublicDTO;
 import com.example.demo.dto.res.UserResponse;
 import com.example.demo.enums.Gender;
-import com.example.demo.event.UserDeleteEvent;
-import com.example.demo.event.UserLockedEvent;
-import com.example.demo.event.UserRegisteredEvent;
-import com.example.demo.event.UserUnlockedEvent;
 import com.example.demo.exception.UserException;
 import com.example.demo.model.User;
 import com.example.demo.repo.UserRepository;
@@ -75,7 +72,16 @@ public class UserServiceImpl implements UserService {
         if (req.getDob() != null)
             user.setDob(req.getDob());
 
-        return new UserResponse(true, "Cập nhật thành công", convertTPublicDTO(userRepository.save(user)));
+        User savaUser = userRepository.save(user);
+        UserUpdatedNameEvent event = new UserUpdatedNameEvent(
+                savaUser.getId(),
+                savaUser.getFName(),
+                savaUser.getLName(),
+                savaUser.getAvatar()
+        );
+
+        kafkaTemplate.send("user-updated_name", event);
+        return new UserResponse(true, "Cập nhật thành công", convertTPublicDTO(savaUser));
     }
 
     @Override
@@ -143,6 +149,15 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             throw new UserException("Cập nhật ảnh đại diện thất bại");
         }
+        User savaUser = userRepository.save(user);
+        UserUpdatedNameEvent event = new UserUpdatedNameEvent(
+                savaUser.getId(),
+                savaUser.getFName(),
+                savaUser.getLName(),
+                savaUser.getAvatar()
+        );
+        kafkaTemplate.send("user-updated_name", event);
+
         return new UserResponse(true, "Cập nhật thành công", convertTPublicDTO(userRepository.save(user)));
     }
 
@@ -198,6 +213,33 @@ public class UserServiceImpl implements UserService {
 
             // gửi sự kiện kafka mở khóa đến message
             kafkaTemplate.send("user-unlocked", new UserUnlockedEvent(user.getId()));
+        }
+    }
+
+    @Override
+    @KafkaListener(topics = "user-unlocked", groupId = "User", containerFactory = "kafkaListenerContainerFactory")
+    public void handleUserUnlocked(UserUnlockedEvent event) {
+        User user = userRepository.findById(event.getId()).orElse(null);
+        if(user !=null){
+            user.setIsLocked(false);
+            user.setLockedUntil(null);
+
+            userRepository.save(user);
+        }
+    }
+
+    @Override
+    @KafkaListener(topics = "user_phone_email-change")
+    public void handleUserUpdate(UserUpdatedPhoneEmailEvent event) {
+        User user = userRepository.findById(event.getId()).orElse(null);
+        if(user != null){
+            if(event.getEmail() != null){
+                user.setEmail(event.getEmail());
+            }
+            if(event.getPhone() != null){
+                user.setPhone(event.getPhone());
+            }
+            userRepository.save(user);
         }
     }
 

@@ -27,4 +27,8 @@ public interface AuthService {
     void handleUserLocked(UserLockedEvent event);
 
     void handleUserUnlocked(UserUnlockedEvent event);
+
+    void requestUnlockByEmail(String email);
+
+    void unlockByToken(String token);
 }
