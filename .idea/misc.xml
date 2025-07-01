@@ -8,10 +8,13 @@
         <option value="$PROJECT_DIR$/Post/demo/pom.xml" />
         <option value="$PROJECT_DIR$/User/demo/pom.xml" />
         <option value="$PROJECT_DIR$/Like/pom.xml" />
+        <option value="$PROJECT_DIR$/Like/like/pom.xml" />
+        <option value="$PROJECT_DIR$/Like/demo/pom.xml" />
       </list>
     </option>
     <option name="ignoredFiles">
       <set>
+        <option value="$PROJECT_DIR$/Like/like/pom.xml" />
         <option value="$PROJECT_DIR$/Like/pom.xml" />
       </set>
     </option>

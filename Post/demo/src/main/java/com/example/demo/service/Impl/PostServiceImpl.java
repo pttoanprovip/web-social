@@ -9,6 +9,7 @@ import com.example.demo.exception.PostException;
 import com.example.demo.model.UserCache;
 import com.example.demo.repo.PostRepository;
 import com.example.demo.repo.UserCacheRepository;
+import org.springframework.data.redis.core.BoundHashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
@@ -42,7 +43,6 @@ public class PostServiceImpl implements PostService {
     @Override
     @KafkaListener(topics = "user-registered", groupId = "Post", containerFactory = "kafkaListenerContainerFactory")
     public void handleUserRegistered(UserRegisteredEvent event) {
-        System.out.println("User registered: " + event.getId() + " - " + event.getFName() + " - " + event.getLName() + " - " + event.getAvatar());
         UserCache userCache = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName()).avatar(event.getAvatar()).build();
         userCacheRepository.save(userCache);
     }
@@ -77,20 +77,8 @@ public class PostServiceImpl implements PostService {
             Optional<UserCache> userCache = userCacheRepository.findById(authorId);
             UserCache user = userCache.orElse(null);
 
-            PostCreateEvent event = new PostCreateEvent(
-                    savePost.getId(),
-                    savePost.getAuthorId(),
-                    savePost.getContent(),
-                    savePost.getLink(),
-                    savePost.getImageURL(),
-                    savePost.getVideoURL(),
-                    savePost.getPrivacy(),
-                    user != null ? user.getFName() : null,
-                    user != null ? user.getLName() : null,
-                    user != null ? user.getAvatar() : null,
-                    savePost.getCreateAt()
-            );
-            kafkaTemplate.send("post-create" ,event);
+            PostCreateEvent event = new PostCreateEvent(savePost.getId(), savePost.getAuthorId(), savePost.getContent(), savePost.getLink(), savePost.getImageURL(), savePost.getVideoURL(), savePost.getPrivacy(), user != null ? user.getFName() : null, user != null ? user.getLName() : null, user != null ? user.getAvatar() : null, savePost.getCreateAt());
+            kafkaTemplate.send("post-create", event);
 
             return new PostResponse(true, "Tạo bài viết thành công", convertToDTO(post));
         } catch (Exception e) {
@@ -105,15 +93,13 @@ public class PostServiceImpl implements PostService {
         if (user == null) {
             try {
                 String url = "http://localhost:8081/user/" + post.getAuthorId();
-                ResponseEntity<UserCacheResponse> response = restTemplate.exchange(
-                        url, HttpMethod.GET, null, UserCacheResponse.class
-                );
-                if(response.getStatusCode().is2xxSuccessful() && response.getBody() != null){
+                ResponseEntity<UserCacheResponse> response = restTemplate.exchange(url, HttpMethod.GET, null, UserCacheResponse.class);
+                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                     user = response.getBody().getData();
                     userCacheRepository.save(user);
                 }
             } catch (Exception e) {
-                throw new PostException("Thất bại trong việc lấy user: "+ e.getMessage());
+                throw new PostException("Thất bại trong việc lấy user: " + e.getMessage());
             }
         }
 
@@ -159,15 +145,7 @@ public class PostServiceImpl implements PostService {
 
             Post savePost = postRepository.save(post);
 
-            PostUpdatedEvent event = new PostUpdatedEvent(
-                    savePost.getId(),
-                    savePost.getContent(),
-                    savePost.getLink(),
-                    savePost.getImageURL(),
-                    savePost.getVideoURL(),
-                    savePost.getPrivacy(),
-                    savePost.getUpdateAt()
-            );
+            PostUpdatedEvent event = new PostUpdatedEvent(savePost.getId(), savePost.getContent(), savePost.getLink(), savePost.getImageURL(), savePost.getVideoURL(), savePost.getPrivacy(), savePost.getUpdateAt());
             kafkaTemplate.send("post-updated", event);
 
             return new PostResponse(true, "Cập nhật thành công", convertToDTO(post));
@@ -191,7 +169,7 @@ public class PostServiceImpl implements PostService {
 
             postRepository.deleteById(id);
             PostDeletedEvent event = new PostDeletedEvent(post.getId());
-            kafkaTemplate.send("post-deleted" ,event);
+            kafkaTemplate.send("post-deleted", event);
         } catch (Exception e) {
             throw new PostException("Lỗi khi xóa bài viết: " + e.getMessage());
         }
