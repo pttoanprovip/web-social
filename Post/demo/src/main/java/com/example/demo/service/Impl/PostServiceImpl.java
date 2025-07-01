@@ -4,8 +4,7 @@ import com.example.demo.config.CloudinaryConfig;
 import com.example.demo.dto.req.PostCreateRequest;
 import com.example.demo.dto.req.UpdatePostRequest;
 import com.example.demo.dto.res.*;
-import com.example.demo.event.UserRegisteredEvent;
-import com.example.demo.event.UserUpdatedNameEvent;
+import com.example.demo.event.*;
 import com.example.demo.exception.PostException;
 import com.example.demo.model.UserCache;
 import com.example.demo.repo.PostRepository;
@@ -14,6 +13,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -37,6 +37,7 @@ public class PostServiceImpl implements PostService {
     private final UserCacheRepository userCacheRepository;
     private final RestTemplate restTemplate;
     private final CloudinaryConfig cloudinaryConfig;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
 
     @Override
     @KafkaListener(topics = "user-registered", groupId = "Post", containerFactory = "kafkaListenerContainerFactory")
@@ -71,7 +72,25 @@ public class PostServiceImpl implements PostService {
             }
 
             Post post = Post.builder().authorId(authorId).content(req.getContent()).link(req.getLink()).imageURL(imageUrl).videoURL(videoUrl).privacy(req.getPrivacy()).createAt(LocalDate.now()).updateAt(LocalDate.now()).build();
-            postRepository.save(post);
+            Post savePost = postRepository.save(post);
+
+            Optional<UserCache> userCache = userCacheRepository.findById(authorId);
+            UserCache user = userCache.orElse(null);
+
+            PostCreateEvent event = new PostCreateEvent(
+                    savePost.getId(),
+                    savePost.getAuthorId(),
+                    savePost.getContent(),
+                    savePost.getLink(),
+                    savePost.getImageURL(),
+                    savePost.getVideoURL(),
+                    savePost.getPrivacy(),
+                    user != null ? user.getFName() : null,
+                    user != null ? user.getLName() : null,
+                    user != null ? user.getAvatar() : null,
+                    savePost.getCreateAt()
+            );
+            kafkaTemplate.send("post-create" ,event);
 
             return new PostResponse(true, "Tạo bài viết thành công", convertToDTO(post));
         } catch (Exception e) {
@@ -138,7 +157,18 @@ public class PostServiceImpl implements PostService {
                 post.setVideoURL(videoUrl);
             }
 
-            postRepository.save(post);
+            Post savePost = postRepository.save(post);
+
+            PostUpdatedEvent event = new PostUpdatedEvent(
+                    savePost.getId(),
+                    savePost.getContent(),
+                    savePost.getLink(),
+                    savePost.getImageURL(),
+                    savePost.getVideoURL(),
+                    savePost.getPrivacy(),
+                    savePost.getUpdateAt()
+            );
+            kafkaTemplate.send("post-updated", event);
 
             return new PostResponse(true, "Cập nhật thành công", convertToDTO(post));
 
@@ -158,9 +188,14 @@ public class PostServiceImpl implements PostService {
         try {
             if (post.getImageURL() != null) cloudinaryConfig.deleteFileByURL(post.getImageURL(), "image");
             if (post.getVideoURL() != null) cloudinaryConfig.deleteFileByURL(post.getVideoURL(), "video");
+
+            postRepository.deleteById(id);
+            PostDeletedEvent event = new PostDeletedEvent(post.getId());
+            kafkaTemplate.send("post-deleted" ,event);
         } catch (Exception e) {
             throw new PostException("Lỗi khi xóa bài viết: " + e.getMessage());
         }
+
     }
 
     @Override
