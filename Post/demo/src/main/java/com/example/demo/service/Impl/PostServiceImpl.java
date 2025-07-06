@@ -43,21 +43,24 @@ public class PostServiceImpl implements PostService {
     @Override
     @KafkaListener(topics = "user-registered", groupId = "Post", containerFactory = "kafkaListenerContainerFactory")
     public void handleUserRegistered(UserRegisteredEvent event) {
-        UserCache userCache = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName()).avatar(event.getAvatar()).build();
+        UserCache userCache = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName())
+                .avatar(event.getAvatar()).build();
         userCacheRepository.save(userCache);
     }
 
     @Override
     @KafkaListener(topics = "user-updated_name", groupId = "Post", containerFactory = "kafkaListenerContainerFactory")
     public void handleUserUpdatedName(UserUpdatedNameEvent event) {
-        UserCache user = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName()).avatar(event.getAvatar()).build();
+        UserCache user = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName())
+                .avatar(event.getAvatar()).build();
         userCacheRepository.save(user);
     }
 
     @Override
     public PostResponse createPost(PostCreateRequest req, MultipartFile image, MultipartFile video) {
         String authorId = SecurityContextHolder.getContext().getAuthentication().getName();
-        if (authorId == null) throw new PostException("Không tìm thấy người dùng");
+        if (authorId == null)
+            throw new PostException("Không tìm thấy người dùng");
 
         try {
             String imageUrl = null;
@@ -71,13 +74,18 @@ public class PostServiceImpl implements PostService {
                 videoUrl = cloudinaryConfig.uploadFile(video, "post/videos", "video");
             }
 
-            Post post = Post.builder().authorId(authorId).content(req.getContent()).link(req.getLink()).imageURL(imageUrl).videoURL(videoUrl).privacy(req.getPrivacy()).createAt(LocalDate.now()).updateAt(LocalDate.now()).build();
+            Post post = Post.builder().authorId(authorId).content(req.getContent()).link(req.getLink())
+                    .imageURL(imageUrl).videoURL(videoUrl).privacy(req.getPrivacy()).createAt(LocalDate.now())
+                    .updateAt(LocalDate.now()).build();
             Post savePost = postRepository.save(post);
 
             Optional<UserCache> userCache = userCacheRepository.findById(authorId);
             UserCache user = userCache.orElse(null);
 
-            PostCreateEvent event = new PostCreateEvent(savePost.getId(), savePost.getAuthorId(), savePost.getContent(), savePost.getLink(), savePost.getImageURL(), savePost.getVideoURL(), savePost.getPrivacy(), user != null ? user.getFName() : null, user != null ? user.getLName() : null, user != null ? user.getAvatar() : null, savePost.getCreateAt());
+            PostCreateEvent event = new PostCreateEvent(savePost.getId(), savePost.getAuthorId(), savePost.getContent(),
+                    savePost.getLink(), savePost.getImageURL(), savePost.getVideoURL(), savePost.getPrivacy(),
+                    user != null ? user.getFName() : null, user != null ? user.getLName() : null,
+                    user != null ? user.getAvatar() : null, savePost.getCreateAt());
             kafkaTemplate.send("post-create", event);
 
             return new PostResponse(true, "Tạo bài viết thành công", convertToDTO(post));
@@ -93,7 +101,8 @@ public class PostServiceImpl implements PostService {
         if (user == null) {
             try {
                 String url = "http://localhost:8081/user/" + post.getAuthorId();
-                ResponseEntity<UserCacheResponse> response = restTemplate.exchange(url, HttpMethod.GET, null, UserCacheResponse.class);
+                ResponseEntity<UserCacheResponse> response = restTemplate.exchange(url, HttpMethod.GET, null,
+                        UserCacheResponse.class);
                 if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                     user = response.getBody().getData();
                     userCacheRepository.save(user);
@@ -103,7 +112,10 @@ public class PostServiceImpl implements PostService {
             }
         }
 
-        return new PostDTO(post.getId(), post.getAuthorId(), user != null ? user.getFName() : "anonymous member", user != null ? user.getLName() : "anonymous member", user != null ? user.getAvatar() : null, post.getContent(), post.getImageURL(), post.getVideoURL(), post.getLink(), post.getPrivacy(), post.getCreateAt(), post.getUpdateAt());
+        return new PostDTO(post.getId(), post.getAuthorId(), user != null ? user.getFName() : "anonymous member",
+                user != null ? user.getLName() : "anonymous member", user != null ? user.getAvatar() : null,
+                post.getContent(), post.getImageURL(), post.getVideoURL(), post.getLink(), post.getPrivacy(),
+                post.getCreateAt(), post.getUpdateAt());
     }
 
     @Override
@@ -115,16 +127,21 @@ public class PostServiceImpl implements PostService {
     @Override
     public PostResponse updatePost(UpdatePostRequest req, String id, MultipartFile image, MultipartFile video) {
         String authorId = SecurityContextHolder.getContext().getAuthentication().getName();
-        if (authorId == null) throw new PostException("Không tìm thấy người dùng");
+        if (authorId == null)
+            throw new PostException("Không tìm thấy người dùng");
 
         Post post = postRepository.findById(id).orElseThrow(() -> new PostException("Không tìm thấy bài viết"));
 
-        if (!post.getAuthorId().equals(authorId)) throw new PostException("Bạn không có quyền chỉnh sửa bài viết này");
+        if (!post.getAuthorId().equals(authorId))
+            throw new PostException("Bạn không có quyền chỉnh sửa bài viết này");
 
         try {
-            if (req.getContent() != null) post.setContent(req.getContent());
-            if (req.getLink() != null) post.setLink(req.getLink());
-            if (req.getPrivacy() != null) post.setPrivacy(req.getPrivacy());
+            if (req.getContent() != null)
+                post.setContent(req.getContent());
+            if (req.getLink() != null)
+                post.setLink(req.getLink());
+            if (req.getPrivacy() != null)
+                post.setPrivacy(req.getPrivacy());
             post.setUpdateAt(LocalDate.now());
 
             if (image != null && !image.isEmpty()) {
@@ -145,7 +162,8 @@ public class PostServiceImpl implements PostService {
 
             Post savePost = postRepository.save(post);
 
-            PostUpdatedEvent event = new PostUpdatedEvent(savePost.getId(), savePost.getContent(), savePost.getLink(), savePost.getImageURL(), savePost.getVideoURL(), savePost.getPrivacy(), savePost.getUpdateAt());
+            PostUpdatedEvent event = new PostUpdatedEvent(savePost.getId(), savePost.getContent(), savePost.getLink(),
+                    savePost.getImageURL(), savePost.getVideoURL(), savePost.getPrivacy(), savePost.getUpdateAt());
             kafkaTemplate.send("post-updated", event);
 
             return new PostResponse(true, "Cập nhật thành công", convertToDTO(post));
@@ -161,11 +179,14 @@ public class PostServiceImpl implements PostService {
 
         Post post = postRepository.findById(id).orElseThrow(() -> new PostException("Không tìm thấy bài viết"));
 
-        if (!post.getAuthorId().equals(authorId)) throw new PostException("Bạn không có quyền xóa bài viết này");
+        if (!post.getAuthorId().equals(authorId))
+            throw new PostException("pp");
 
         try {
-            if (post.getImageURL() != null) cloudinaryConfig.deleteFileByURL(post.getImageURL(), "image");
-            if (post.getVideoURL() != null) cloudinaryConfig.deleteFileByURL(post.getVideoURL(), "video");
+            if (post.getImageURL() != null)
+                cloudinaryConfig.deleteFileByURL(post.getImageURL(), "image");
+            if (post.getVideoURL() != null)
+                cloudinaryConfig.deleteFileByURL(post.getVideoURL(), "video");
 
             postRepository.deleteById(id);
             PostDeletedEvent event = new PostDeletedEvent(post.getId());
@@ -178,7 +199,8 @@ public class PostServiceImpl implements PostService {
 
     @Override
     public List<PostResponse> getAllPosts() {
-        return postRepository.findAll().stream().map(post -> new PostResponse(true, "Lấy thành công", convertToDTO(post))).collect(Collectors.toList());
+        return postRepository.findAll().stream()
+                .map(post -> new PostResponse(true, "Lấy thành công", convertToDTO(post))).collect(Collectors.toList());
     }
 
     @Override
@@ -186,7 +208,10 @@ public class PostServiceImpl implements PostService {
         String id = SecurityContextHolder.getContext().getAuthentication().getName();
         List<Post> posts = postRepository.findByAuthorId(id);
 
-        List<PostOfUserResponse> data = posts.stream().map(post -> new PostOfUserResponse(post.getId(), post.getContent(), post.getImageURL(), post.getVideoURL(), post.getLink(), post.getPrivacy(), post.getCreateAt(), post.getUpdateAt())).toList();
+        List<PostOfUserResponse> data = posts.stream()
+                .map(post -> new PostOfUserResponse(post.getId(), post.getContent(), post.getImageURL(),
+                        post.getVideoURL(), post.getLink(), post.getPrivacy(), post.getCreateAt(), post.getUpdateAt()))
+                .toList();
 
         return new ListPostResponse(true, "Lấy thành công", data);
     }

@@ -5,10 +5,10 @@ import com.example.demo.dto.req.UpdateLikeRequest;
 import com.example.demo.dto.res.UserCacheRepsone;
 import com.example.demo.dto.res.LikeDTO;
 import com.example.demo.dto.res.LikeResponse;
-import com.example.demo.enums.Operation;
 import com.example.demo.enums.Type;
 import com.example.demo.event.PostCreateEvent;
 import com.example.demo.event.PostDeletedEvent;
+import com.example.demo.event.UserUpdatedNameEvent;
 import com.example.demo.exception.LikeException;
 import com.example.demo.model.Like;
 import com.example.demo.model.UserCache;
@@ -50,6 +50,13 @@ public class LikeServiceImpl implements LikeService {
     public void handlePostDelete(PostDeletedEvent event) {
         String postId = event.getId();
         likeRepository.deleteByPostId(postId);
+    }
+
+    @Override
+    @KafkaListener(topics = "user-update-name", groupId = "Like", containerFactory = "kafkaListenerContainerFactory")
+    public void handleUserUpdateName(UserUpdatedNameEvent event) {
+        UserCache user = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName()).avatar(event.getAvatar()).build();
+        userCacheRepository.save(user);
     }
 
     @Override

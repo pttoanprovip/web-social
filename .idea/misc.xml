@@ -10,10 +10,16 @@
         <option value="$PROJECT_DIR$/Like/pom.xml" />
         <option value="$PROJECT_DIR$/Like/like/pom.xml" />
         <option value="$PROJECT_DIR$/Like/demo/pom.xml" />
+        <option value="$PROJECT_DIR$/Comment/comment/pom.xml" />
+        <option value="$PROJECT_DIR$/Comment/pom.xml" />
+        <option value="$PROJECT_DIR$/Comment/commentt/pom.xml" />
+        <option value="$PROJECT_DIR$/Comment/Comment/pom.xml" />
+        <option value="$PROJECT_DIR$/Comment/demo/pom.xml" />
       </list>
     </option>
     <option name="ignoredFiles">
       <set>
+        <option value="$PROJECT_DIR$/Comment/pom.xml" />
         <option value="$PROJECT_DIR$/Like/like/pom.xml" />
         <option value="$PROJECT_DIR$/Like/pom.xml" />
       </set>

@@ -1,11 +1,12 @@
 package com.example.demo.event;
 
-import com.example.demo.enums.Privacy;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+
+import com.example.demo.enums.Privacy;
 
 @Data
 @NoArgsConstructor
