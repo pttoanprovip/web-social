@@ -15,10 +15,15 @@
         <option value="$PROJECT_DIR$/Comment/commentt/pom.xml" />
         <option value="$PROJECT_DIR$/Comment/Comment/pom.xml" />
         <option value="$PROJECT_DIR$/Comment/demo/pom.xml" />
+        <option value="$PROJECT_DIR$/api-gateway/apigateway/pom.xml" />
+        <option value="$PROJECT_DIR$/Api-Gateway/api-gateway/pom.xml" />
+        <option value="$PROJECT_DIR$/Api-Gateway/eureka-service/pom.xml" />
+        <option value="$PROJECT_DIR$/Eureka-Service/eureka-service/pom.xml" />
       </list>
     </option>
     <option name="ignoredFiles">
       <set>
+        <option value="$PROJECT_DIR$/Api-Gateway/eureka-service/pom.xml" />
         <option value="$PROJECT_DIR$/Comment/pom.xml" />
         <option value="$PROJECT_DIR$/Like/like/pom.xml" />
         <option value="$PROJECT_DIR$/Like/pom.xml" />

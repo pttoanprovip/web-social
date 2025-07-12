@@ -1,0 +1,45 @@
+server:
+  port: 8765
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/auth/**
+            - Path=/upload/**
+
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/user/**
+
+        - id: post-service
+          uri: lb://post-service
+          predicates:
+            - Path=/post/**
+
+        - id: like-service
+          uri: lb://like-service
+          predicates:
+            - Path=/like/**
+
+        - id: comment-service
+          uri: lb://comment-service
+          predicates:
+            - Path=/comment/**
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka
+    healthcheck:
+      enabled: true
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
