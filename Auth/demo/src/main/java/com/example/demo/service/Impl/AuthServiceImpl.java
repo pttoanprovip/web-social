@@ -8,7 +8,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.example.demo.event.*;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.mail.SimpleMailMessage;
@@ -39,7 +39,7 @@ public class AuthServiceImpl implements AuthService {
     private final AuthRepository authRepository;
     private final PasswordEncoder passwordEncoder;
     private final KafkaTemplate<String, Object> kafkaTemplate;
-    private final StringRedisTemplate redisTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
     private final JavaMailSender javaMailSender;
 
     @NonFinal
@@ -76,6 +76,8 @@ public class AuthServiceImpl implements AuthService {
         }
 
         String token = generateToken(auth);
+        redisTemplate.opsForValue().set("token:" + token, auth.getId(), 30, TimeUnit.MINUTES);
+
         return new LoginResponse(token);
     }
 
@@ -93,6 +95,7 @@ public class AuthServiceImpl implements AuthService {
 
         Auth saveAuth = authRepository.save(auth);
         String token = generateToken(saveAuth);
+        redisTemplate.opsForValue().set("token:" + token, auth.getId(), 30, TimeUnit.MINUTES);
 
         UserRegisteredEvent event = new UserRegisteredEvent(saveAuth.getId(), req.getEmail(), req.getPhone(), req.getFName(), req.getLName(), req.getDob(), req.getGender().name(), req.getAvatar(), LocalDate.now());
 
@@ -218,7 +221,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public void unlockByToken(String token) {
-        String userId = redisTemplate.opsForValue().get("unlockToken:" + token);
+        String userId = redisTemplate.opsForValue().get("unlockToken:" + token).toString();
         if (userId == null) {
             throw new AuthException("Mã thông báo không hợp lệ hoặc đã hết hạn");
         }

@@ -2,9 +2,12 @@ package com.example.demo.service.Impl;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.example.demo.config.RedisConfig;
 import com.example.demo.event.*;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -32,6 +35,7 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final CloudinaryConfig cloudinaryConfig;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     @Override
     @KafkaListener(topics = "user-registered", groupId = "User", containerFactory = "kafkaListenerContainerFactory")
@@ -52,6 +56,8 @@ public class UserServiceImpl implements UserService {
             if (!userRepository.existsById(user.getId())) {
                 userRepository.save(user);
             }
+
+            redisTemplate.opsForValue().set("user:" + user.getId(), user, 10, TimeUnit.MINUTES);
         } catch (Exception e) {
             throw new UserException(e.getMessage());
         }
@@ -73,6 +79,8 @@ public class UserServiceImpl implements UserService {
             user.setDob(req.getDob());
 
         User savaUser = userRepository.save(user);
+        redisTemplate.opsForValue().set("user:" + id, savaUser, 10, TimeUnit.MINUTES);
+
         UserUpdatedNameEvent event = new UserUpdatedNameEvent(
                 savaUser.getId(),
                 savaUser.getFName(),
@@ -89,13 +97,18 @@ public class UserServiceImpl implements UserService {
         userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
         userRepository.deleteById(id);
 
+        redisTemplate.delete("user:" + id);
         // Gửi sự kiện kafka xóa người dùng đến message
         kafkaTemplate.send("user-deleted", new UserDeleteEvent(id));
     }
 
     @Override
     public UserResponse getById(String id) {
-        User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
+        User user = (User) redisTemplate.opsForValue().get("user:" + id);
+        if(user == null){
+            user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
+            redisTemplate.opsForValue().set("user:" + id, user, 10, TimeUnit.MINUTES);
+        }
         return new UserResponse(true, "Lấy thành công", convertTPublicDTO(user));
     }
 

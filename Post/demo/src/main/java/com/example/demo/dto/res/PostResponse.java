@@ -11,5 +11,5 @@ import lombok.NoArgsConstructor;
 public class PostResponse {
     private boolean success;
     private String message;
-    private PostDTO data;
+    private Object data;
 }

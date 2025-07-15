@@ -10,5 +10,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CreateLikeRequest {
     private String postId;
+    private String commentId;
     private Type type;
 }

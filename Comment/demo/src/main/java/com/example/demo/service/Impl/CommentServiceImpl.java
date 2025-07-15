@@ -7,9 +7,7 @@ import com.example.demo.dto.req.UpdateCommentRequest;
 import com.example.demo.dto.res.CommentDTO;
 import com.example.demo.dto.res.CommentResponse;
 import com.example.demo.dto.res.UserCacheResponse;
-import com.example.demo.event.PostCreateEvent;
-import com.example.demo.event.PostDeletedEvent;
-import com.example.demo.event.UserUpdatedNameEvent;
+import com.example.demo.event.*;
 import com.example.demo.exception.CommentException;
 import com.example.demo.model.Comment;
 import com.example.demo.model.UserCache;
@@ -21,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpMethod;
@@ -84,6 +83,14 @@ public class CommentServiceImpl implements CommentService {
             Comment comment = Comment.builder().postId(req.getPostId()).userId(userId).content(req.getContent()).imageURL(imageUrl).videoURL(videoUrl).createAt(LocalDate.now()).build();
 
             commentRepository.save(comment);
+            redisTemplate.opsForValue().set("comment:" + comment.getId(), comment, 1, TimeUnit.HOURS);
+            redisTemplate.delete("comments:" + req.getPostId());
+
+            Optional<UserCache> userCache = userCacheRepository.findById(userId);
+            UserCache user = userCache.orElse(null);
+
+            CommentCreateEvent event = new CommentCreateEvent(comment.getId());
+            kafkaTemplate.send("comment-create", event);
 
             return new CommentResponse(true, "Tạo bình luận thành công", convertToDTO(comment));
         } catch (Exception e) {
@@ -118,10 +125,12 @@ public class CommentServiceImpl implements CommentService {
                     cloudinary.deleteFileByURL(comment.getVideoURL(), "video");
                 }
                 String videoUrl = cloudinary.uploadFile(video, "post/videos", "video");
-                comment.setImageURL(videoUrl);
+                comment.setVideoURL(videoUrl);
             }
 
             commentRepository.save(comment);
+            redisTemplate.delete("comment:" + id);
+            redisTemplate.delete("comments:" + comment.getPostId());
 
             return new CommentResponse(true, "Cập nhật bình luận thành công", convertToDTO(comment));
         } catch (Exception e) {
@@ -135,6 +144,8 @@ public class CommentServiceImpl implements CommentService {
         if (userId == null) throw new CommentException("Không tìm thấy người dùng");
 
         Comment comment = commentRepository.findById(id).orElseThrow(() -> new CommentException("Không tìm thấy bình luận"));
+        String postId = comment.getPostId();
+
         if (!comment.getUserId().equals(userId)) throw new CommentException("Bạn không có quyền xóa bình luận này");
 
         try {
@@ -144,6 +155,11 @@ public class CommentServiceImpl implements CommentService {
                 cloudinary.deleteFileByURL(comment.getVideoURL(), "video");
 
             commentRepository.deleteById(id);
+            redisTemplate.delete("comment:" + id);
+            redisTemplate.delete("comments:" + postId);
+
+            CommentDeleteEvent event = new CommentDeleteEvent(comment.getId());
+            kafkaTemplate.send("comment-delete", event);
         } catch (Exception e) {
             throw new CommentException("Lỗi khi xóa bình luận: " + e.getMessage());
         }
@@ -151,12 +167,15 @@ public class CommentServiceImpl implements CommentService {
 
     @Override
     public CommentResponse getCommentByPost(String postId) {
-        List<Comment> comments = commentRepository.findByPostId(postId);
-        if (comments.isEmpty()) throw new CommentException("Bài viết chưa có bình luận nào");
-
-        List<CommentDTO> commentDTOs = comments.stream().map(this::convertToDTO).toList();
-
-        return new CommentResponse(true, "Lấy bình luận thành công", commentDTOs);
+        List<CommentDTO> cached = (List<CommentDTO>) redisTemplate.opsForValue().get("comment:" + postId);
+        if (cached != null) {
+            return new CommentResponse(true, "Lấy bình luận thành công từ cache", cached);
+        } else {
+            List<Comment> comments = commentRepository.findByPostId(postId);
+            List<CommentDTO> commentDTOs = comments.stream().map(this::convertToDTO).toList();
+            redisTemplate.opsForValue().set("comment:" + postId, commentDTOs, 1, TimeUnit.HOURS);
+            return new CommentResponse(true, "Lấy bình luận thành công", commentDTOs);
+        }
     }
 
     @Override
@@ -188,7 +207,8 @@ public class CommentServiceImpl implements CommentService {
                     .build();
 
             commentRepository.save(comment);
-
+            redisTemplate.opsForValue().set("comment:" + comment.getId(), comment, 1, TimeUnit.HOURS);
+            redisTemplate.delete("comments:" + req.getPostId());
             return new CommentResponse(true, "Tạo bình luận thành công", convertToDTO(comment));
         } catch (Exception e) {
             throw new CommentException("Lỗi khi tạo bình luận: " + e.getMessage());
@@ -196,21 +216,27 @@ public class CommentServiceImpl implements CommentService {
     }
 
     public CommentDTO convertToDTO(Comment comment) {
-        Optional<UserCache> userCache = userCacheRepository.findById(comment.getUserId());
-        UserCache user = userCache.orElse(null);
+        UserCache user = (UserCache) redisTemplate.opsForValue().get("user:cache:" + comment.getUserId());
 
         if (user == null) {
-            try {
-                String url = "http://localhost:8081/user/" + comment.getUserId();
-                ResponseEntity<UserCacheResponse> res = restTemplate.exchange(url, HttpMethod.GET, null, UserCacheResponse.class);
+            Optional<UserCache> userCache = userCacheRepository.findById(comment.getUserId());
+            user = userCache.orElse(null);
 
-                if (res.getStatusCode().is2xxSuccessful() && res.getBody() != null) {
-                    user = res.getBody().getData();
-                    userCacheRepository.save(user);
+            if (user == null) {
+                try {
+                    String url = "http://localhost:8081/user/" + comment.getUserId();
+                    ResponseEntity<UserCacheResponse> response = restTemplate.exchange(url, HttpMethod.GET, null, UserCacheResponse.class);
+                    if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                        user = response.getBody().getData();
+                        userCacheRepository.save(user);
+
+                        redisTemplate.opsForValue().set("user:cache:" + comment.getUserId(), user, 1, TimeUnit.HOURS);
+                    }
+                } catch (Exception e) {
+                    throw new CommentException("Thất bại trong việc lấy user: " + e.getMessage());
                 }
-            } catch (Exception e) {
-                System.out.println("Không thể lấy thông tin userId: " + comment.getUserId());
-                return new CommentDTO(comment.getId(), comment.getPostId(), comment.getUserId(), comment.getContent(), comment.getImageURL(), comment.getVideoURL(), comment.getCreateAt(), null, null, null, comment.getParentCommentId());
+            } else {
+                redisTemplate.opsForValue().set("user:cache:" + comment.getUserId(), user, 1, TimeUnit.HOURS);
             }
         }
 

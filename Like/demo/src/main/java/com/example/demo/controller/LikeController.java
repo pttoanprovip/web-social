@@ -50,6 +50,15 @@ public class LikeController {
         }
     }
 
+    @GetMapping("/group-reactions-by-comment/{commmentId}")
+    public ResponseEntity<?> getGroupReactionsByComment(@PathVariable String commmentId) {
+        try{
+            return ResponseEntity.ok(likeService.getGroupReactionsByComment(commmentId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
     @GetMapping("/history-me")
     public ResponseEntity<?> getHistoryReactionOfUser() {
         try{

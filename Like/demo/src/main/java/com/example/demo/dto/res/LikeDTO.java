@@ -14,6 +14,7 @@ public class LikeDTO {
     private String id;
     private String userId;
     private String postId;
+    private String commentId;
     private Type type;
     private String avatar;
     private String fName;

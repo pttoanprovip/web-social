@@ -19,6 +19,7 @@ public class Like {
 
     private String userId;
     private String postId;
+    private String commentId;
 
     @Enumerated(EnumType.STRING)
     private Type type;
