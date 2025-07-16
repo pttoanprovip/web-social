@@ -60,19 +60,10 @@ public class UserController {
         }
     }
 
-    @GetMapping("/first-name/{fName}")
-    public ResponseEntity<?> findByFirstName(@PathVariable String fName) {
+    @GetMapping("/search-name")
+    public ResponseEntity<?> getNameOfUser(@RequestParam String keyword) {
         try {
-            return ResponseEntity.ok(userService.findByFirstName(fName));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        }
-    }
-
-    @GetMapping("/last-name/{lName}")
-    public ResponseEntity<?> findByLastName(@PathVariable String lName) {
-        try {
-            return ResponseEntity.ok(userService.findByLastName(lName));
+            return ResponseEntity.ok(userService.findByUserByName(keyword.toLowerCase().trim()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

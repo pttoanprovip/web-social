@@ -33,9 +33,7 @@ public interface UserService {
 
     List<UserResponse> getAll();
 
-    List<UserResponse> findByFirstName(String fName);
-
-    List<UserResponse> findByLastName(String lName);
+    List<UserResponse> findByUserByName(String keyword);
 
     UserResponse updateAvatar(String id, MultipartFile file);
 

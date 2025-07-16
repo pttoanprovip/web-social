@@ -1,5 +1,6 @@
 package com.example.demo.model;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -27,6 +28,7 @@ public class Comment {
     private String imageURL;
     private String videoURL;
 
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate createAt;
 
 }

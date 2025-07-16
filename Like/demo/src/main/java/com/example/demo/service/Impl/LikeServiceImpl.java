@@ -2,7 +2,7 @@ package com.example.demo.service.Impl;
 
 import com.example.demo.dto.req.CreateLikeRequest;
 import com.example.demo.dto.req.UpdateLikeRequest;
-import com.example.demo.dto.res.UserCacheRepsone;
+import com.example.demo.dto.res.UserCacheRepsonse;
 import com.example.demo.dto.res.LikeDTO;
 import com.example.demo.dto.res.LikeResponse;
 import com.example.demo.enums.Type;
@@ -13,7 +13,10 @@ import com.example.demo.model.UserCache;
 import com.example.demo.repo.LikeRepository;
 import com.example.demo.repo.UserCacheRepository;
 import com.example.demo.service.LikeService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
@@ -54,7 +57,8 @@ public class LikeServiceImpl implements LikeService {
     @Override
     @KafkaListener(topics = "user-update-name", groupId = "Like", containerFactory = "kafkaListenerContainerFactory")
     public void handleUserUpdateName(UserUpdatedNameEvent event) {
-        UserCache user = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName()).avatar(event.getAvatar()).build();
+        UserCache user = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName())
+                .avatar(event.getAvatar()).build();
         userCacheRepository.save(user);
     }
 
@@ -75,22 +79,28 @@ public class LikeServiceImpl implements LikeService {
         String userId = SecurityContextHolder.getContext().getAuthentication().getName();
         if (userId == null) throw new LikeException("Không tìm thấy nguời dùng");
 
-        Optional<Like> existingPostLike = likeRepository.findByUserIdAndPostId(userId, req.getPostId());
-        Optional<Like> existingCommentLike = likeRepository.findByUserIdAndCommentId(userId, req.getCommentId());
+        if (req.getPostId() != null) {
+            List<Like> existingPostReaction = likeRepository.findByUserIdAndPostId(userId, req.getPostId());
+            if (!existingPostReaction.isEmpty())
+                throw new LikeException("Ngươời dùng đã thả cảm xúc ở bài viết này rồi");
+        } else {
+            List<Like> existingCommentReaction = likeRepository.findByUserIdAndCommentId(userId, req.getCommentId());
+            if (!existingCommentReaction.isEmpty())
+                throw new LikeException("Ngươời dùng đã thả cảm xúc ở bài viết này rồi");
+        }
 
-        if (existingPostLike.isPresent()) throw new LikeException("Người dùng đã thả cảm xúc vào bài viết này rồi");
-        if (existingCommentLike.isPresent()) throw new LikeException("Người dùng đã thả cảm xúc vào bài viết này rồi");
-
-        Like like = Like.builder().userId(userId).postId(req.getPostId()).commentId(req.getCommentId()).type(req.getType()).createAt(LocalDate.now()).build();
+        Like like =
+                Like.builder().userId(userId).postId(req.getPostId()).commentId(req.getCommentId()).type(req.getType())
+                        .createAt(LocalDate.now()).build();
         Like savaLike = likeRepository.save(like);
 
         redisTemplate.opsForValue().set("like:" + savaLike.getId(), convertToDTO(savaLike), 1, TimeUnit.HOURS);
 
-        if(req.getPostId() != null) {
+        if (req.getPostId() != null) {
             redisTemplate.delete("reactions:summary:" + req.getPostId());
         }
 
-        if(req.getCommentId() != null) {
+        if (req.getCommentId() != null) {
             redisTemplate.delete("reactions:comment:summary:" + req.getPostId());
         }
 
@@ -104,11 +114,11 @@ public class LikeServiceImpl implements LikeService {
         Like like = likeRepository.findById(id).orElseThrow(() -> new LikeException("Không tìm thấy cảm xúc"));
         if (!like.getUserId().equals(userId)) throw new LikeException("Bạn không có quyền xóa cảm xúc này");
 
-        if(like.getPostId() != null) {
+        if (like.getPostId() != null) {
             redisTemplate.delete("reactions:summary:" + like.getPostId());
         }
 
-        if(like.getCommentId() != null) {
+        if (like.getCommentId() != null) {
             redisTemplate.delete("reactions:comment:summary:" + like.getPostId());
         }
 
@@ -127,11 +137,11 @@ public class LikeServiceImpl implements LikeService {
         like.setType(req.getType());
         Like saveLike = likeRepository.save(like);
 
-        if(like.getPostId() != null) {
+        if (like.getPostId() != null) {
             redisTemplate.delete("reactions:summary:" + like.getPostId());
         }
 
-        if(like.getCommentId() != null) {
+        if (like.getCommentId() != null) {
             redisTemplate.delete("reactions:comment:summary:" + like.getPostId());
         }
 
@@ -176,7 +186,8 @@ public class LikeServiceImpl implements LikeService {
         }
 
         // Tạo top reactions (sắp xếp giảm dần)
-        counts.entrySet().stream().filter(entry -> entry.getValue() > 0).sorted(Map.Entry.<String, Integer>comparingByValue().reversed()).limit(3) // Chỉ lấy top 3
+        counts.entrySet().stream().filter(entry -> entry.getValue() > 0)
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed()).limit(3) // Chỉ lấy top 3
                 .forEach(entry -> {
                     Map<String, Object> top = new HashMap<>();
                     top.put("type", entry.getKey());
@@ -270,7 +281,19 @@ public class LikeServiceImpl implements LikeService {
 
 
     public LikeDTO convertToDTO(Like like) {
-        UserCache user = (UserCache) redisTemplate.opsForValue().get("user:cache:" + like.getUserId());
+        UserCache user = null;
+        Object rawUser = redisTemplate.opsForValue().get("user:cache:" + like.getUserId());
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+
+        if (rawUser != null) {
+            try {
+                user = objectMapper.convertValue(rawUser, UserCache.class);
+            } catch (Exception e) {
+                // Log lỗi để debug
+                System.err.println("Lỗi khi chuyển đổi từ Redis: " + e.getMessage());
+            }
+        }
 
         if (user == null) {
             Optional<UserCache> userCache = userCacheRepository.findById(like.getUserId());
@@ -279,12 +302,15 @@ public class LikeServiceImpl implements LikeService {
             if (user == null) {
                 try {
                     String url = "http://localhost:8081/user/" + like.getUserId();
-                    ResponseEntity<UserCacheRepsone> response = restTemplate.exchange(url, HttpMethod.GET, null, UserCacheRepsone.class);
+                    ResponseEntity<UserCacheRepsonse> response = restTemplate.exchange(url, HttpMethod.GET, null,
+                            new ParameterizedTypeReference<UserCacheRepsonse>() {
+                            });
                     if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                         user = response.getBody().getData();
-                        userCacheRepository.save(user);
-
-                        redisTemplate.opsForValue().set("user:cache:" + like.getUserId(), user, 1, TimeUnit.HOURS);
+                        if (user != null) {
+                            userCacheRepository.save(user);
+                            redisTemplate.opsForValue().set("user:cache:" + like.getUserId(), user, 1, TimeUnit.HOURS);
+                        }
                     }
                 } catch (Exception e) {
                     throw new LikeException("Thất bại trong việc lấy user: " + e.getMessage());

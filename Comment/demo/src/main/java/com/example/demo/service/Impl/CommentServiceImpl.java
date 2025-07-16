@@ -14,6 +14,8 @@ import com.example.demo.model.UserCache;
 import com.example.demo.repo.CommentRepository;
 import com.example.demo.repo.UserCacheRepository;
 import com.example.demo.service.CommentService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDate;
@@ -21,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
@@ -216,7 +219,19 @@ public class CommentServiceImpl implements CommentService {
     }
 
     public CommentDTO convertToDTO(Comment comment) {
-        UserCache user = (UserCache) redisTemplate.opsForValue().get("user:cache:" + comment.getUserId());
+        UserCache user = null;
+        Object rawUser = redisTemplate.opsForValue().get("user:cache:" + comment.getUserId());
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+
+        if (rawUser != null) {
+            try {
+                user = objectMapper.convertValue(rawUser, UserCache.class);
+            } catch (Exception e) {
+                // Log lỗi để debug
+                System.err.println("Lỗi khi chuyển đổi từ Redis: " + e.getMessage());
+            }
+        }
 
         if (user == null) {
             Optional<UserCache> userCache = userCacheRepository.findById(comment.getUserId());
@@ -225,12 +240,14 @@ public class CommentServiceImpl implements CommentService {
             if (user == null) {
                 try {
                     String url = "http://localhost:8081/user/" + comment.getUserId();
-                    ResponseEntity<UserCacheResponse> response = restTemplate.exchange(url, HttpMethod.GET, null, UserCacheResponse.class);
+                    ResponseEntity<UserCacheResponse> response = restTemplate.exchange(url, HttpMethod.GET, null,
+                            new ParameterizedTypeReference<UserCacheResponse>() {});
                     if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                         user = response.getBody().getData();
-                        userCacheRepository.save(user);
-
-                        redisTemplate.opsForValue().set("user:cache:" + comment.getUserId(), user, 1, TimeUnit.HOURS);
+                        if (user != null) {
+                            userCacheRepository.save(user);
+                            redisTemplate.opsForValue().set("user:cache:" + comment.getUserId(), user, 1, TimeUnit.HOURS);
+                        }
                     }
                 } catch (Exception e) {
                     throw new CommentException("Thất bại trong việc lấy user: " + e.getMessage());

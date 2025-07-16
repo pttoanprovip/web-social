@@ -9,6 +9,9 @@ import com.example.demo.exception.PostException;
 import com.example.demo.model.UserCache;
 import com.example.demo.repo.PostRepository;
 import com.example.demo.repo.UserCacheRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
@@ -43,14 +46,16 @@ public class PostServiceImpl implements PostService {
     @Override
     @KafkaListener(topics = "user-registered", groupId = "Post", containerFactory = "kafkaListenerContainerFactory")
     public void handleUserRegistered(UserRegisteredEvent event) {
-        UserCache userCache = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName()).avatar(event.getAvatar()).build();
+        UserCache userCache = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName())
+                .avatar(event.getAvatar()).build();
         userCacheRepository.save(userCache);
     }
 
     @Override
     @KafkaListener(topics = "user-updated_name", groupId = "Post", containerFactory = "kafkaListenerContainerFactory")
     public void handleUserUpdatedName(UserUpdatedNameEvent event) {
-        UserCache user = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName()).avatar(event.getAvatar()).build();
+        UserCache user = UserCache.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName())
+                .avatar(event.getAvatar()).build();
         userCacheRepository.save(user);
     }
 
@@ -71,7 +76,10 @@ public class PostServiceImpl implements PostService {
                 videoUrl = cloudinaryConfig.uploadFile(video, "post/videos", "video");
             }
 
-            Post post = Post.builder().authorId(authorId).content(req.getContent()).link(req.getLink()).imageURL(imageUrl).videoURL(videoUrl).privacy(req.getPrivacy()).createAt(LocalDate.now()).updateAt(LocalDate.now()).build();
+            Post post =
+                    Post.builder().authorId(authorId).content(req.getContent()).link(req.getLink()).imageURL(imageUrl)
+                            .videoURL(videoUrl).privacy(req.getPrivacy()).createAt(LocalDate.now())
+                            .updateAt(LocalDate.now()).build();
             Post savePost = postRepository.save(post);
 
             redisTemplate.opsForValue().set("post:" + savePost.getId(), convertToDTO(post), 10, TimeUnit.MINUTES);
@@ -82,7 +90,10 @@ public class PostServiceImpl implements PostService {
             Optional<UserCache> userCache = userCacheRepository.findById(authorId);
             UserCache user = userCache.orElse(null);
 
-            PostCreateEvent event = new PostCreateEvent(savePost.getId(), savePost.getAuthorId(), savePost.getContent(), savePost.getLink(), savePost.getImageURL(), savePost.getVideoURL(), savePost.getPrivacy(), user != null ? user.getFName() : null, user != null ? user.getLName() : null, user != null ? user.getAvatar() : null, savePost.getCreateAt());
+            PostCreateEvent event = new PostCreateEvent(savePost.getId(), savePost.getAuthorId(), savePost.getContent(),
+                    savePost.getLink(), savePost.getImageURL(), savePost.getVideoURL(), savePost.getPrivacy(),
+                    user != null ? user.getFName() : null, user != null ? user.getLName() : null,
+                    user != null ? user.getAvatar() : null, savePost.getCreateAt());
             kafkaTemplate.send("post-create", event);
 
             return new PostResponse(true, "Tạo bài viết thành công", convertToDTO(post));
@@ -92,7 +103,19 @@ public class PostServiceImpl implements PostService {
     }
 
     private PostDTO convertToDTO(Post post) {
-        UserCache user = (UserCache) redisTemplate.opsForValue().get("user:cache:" + post.getAuthorId());
+        UserCache user = null;
+        Object rawUser = redisTemplate.opsForValue().get("user:cache:" + post.getAuthorId());
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+
+        if (rawUser != null) {
+            try {
+                user = objectMapper.convertValue(rawUser, UserCache.class);
+            } catch (Exception e) {
+                // Log lỗi để debug
+                System.err.println("Lỗi khi chuyển đổi từ Redis: " + e.getMessage());
+            }
+        }
 
         if (user == null) {
             Optional<UserCache> userCache = userCacheRepository.findById(post.getAuthorId());
@@ -101,12 +124,14 @@ public class PostServiceImpl implements PostService {
             if (user == null) {
                 try {
                     String url = "http://localhost:8081/user/" + post.getAuthorId();
-                    ResponseEntity<UserCacheResponse> response = restTemplate.exchange(url, HttpMethod.GET, null, UserCacheResponse.class);
+                    ResponseEntity<UserCacheResponse> response = restTemplate.exchange(url, HttpMethod.GET, null,
+                            new ParameterizedTypeReference<UserCacheResponse>() {});
                     if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                         user = response.getBody().getData();
-                        userCacheRepository.save(user);
-
-                        redisTemplate.opsForValue().set("user:cache:" + post.getAuthorId(), user, 1, TimeUnit.HOURS);
+                        if (user != null) {
+                            userCacheRepository.save(user);
+                            redisTemplate.opsForValue().set("user:cache:" + post.getAuthorId(), user, 1, TimeUnit.HOURS);
+                        }
                     }
                 } catch (Exception e) {
                     throw new PostException("Thất bại trong việc lấy user: " + e.getMessage());
@@ -116,7 +141,10 @@ public class PostServiceImpl implements PostService {
             }
         }
 
-        return new PostDTO(post.getId(), post.getAuthorId(), user != null ? user.getFName() : "anonymous member", user != null ? user.getLName() : "anonymous member", user != null ? user.getAvatar() : null, post.getContent(), post.getImageURL(), post.getVideoURL(), post.getLink(), post.getPrivacy(), post.getCreateAt(), post.getUpdateAt());
+        return new PostDTO(post.getId(), post.getAuthorId(), user != null ? user.getFName() : "anonymous member",
+                user != null ? user.getLName() : "anonymous member", user != null ? user.getAvatar() : null,
+                post.getContent(), post.getImageURL(), post.getVideoURL(), post.getLink(), post.getPrivacy(),
+                post.getCreateAt(), post.getUpdateAt());
     }
 
     @Override
@@ -170,7 +198,8 @@ public class PostServiceImpl implements PostService {
             redisTemplate.delete("post:all");
             redisTemplate.delete("post:user:" + authorId);
 
-            PostUpdatedEvent event = new PostUpdatedEvent(savePost.getId(), savePost.getContent(), savePost.getLink(), savePost.getImageURL(), savePost.getVideoURL(), savePost.getPrivacy(), savePost.getUpdateAt());
+            PostUpdatedEvent event = new PostUpdatedEvent(savePost.getId(), savePost.getContent(), savePost.getLink(),
+                    savePost.getImageURL(), savePost.getVideoURL(), savePost.getPrivacy(), savePost.getUpdateAt());
             kafkaTemplate.send("post-updated", event);
 
             return new PostResponse(true, "Cập nhật thành công", convertToDTO(post));
@@ -213,7 +242,9 @@ public class PostServiceImpl implements PostService {
             return cacheListPost;
         } else {
             List<Post> allPost = postRepository.findAll();
-            List<PostResponse> responseList = allPost.stream().map(post -> new PostResponse(true, "Lấy thành công", convertToDTO(post))).collect(Collectors.toList());
+            List<PostResponse> responseList =
+                    allPost.stream().map(post -> new PostResponse(true, "Lấy thành công", convertToDTO(post)))
+                            .collect(Collectors.toList());
 
             redisTemplate.opsForValue().set("post:all", responseList, 15, TimeUnit.MINUTES);
 
@@ -225,13 +256,17 @@ public class PostServiceImpl implements PostService {
     public ListPostResponse getAllPostsOfUser() {
         String userId = SecurityContextHolder.getContext().getAuthentication().getName();
 
-        ListPostResponse cacheListPostOfUser = (ListPostResponse) redisTemplate.opsForValue().get("post:user:" + userId);
+        ListPostResponse cacheListPostOfUser =
+                (ListPostResponse) redisTemplate.opsForValue().get("post:user:" + userId);
         if (cacheListPostOfUser != null) {
             return cacheListPostOfUser;
         } else {
             List<Post> posts = postRepository.findByAuthorId(userId);
 
-            List<PostOfUserResponse> data = posts.stream().map(post -> new PostOfUserResponse(post.getId(), post.getContent(), post.getImageURL(), post.getVideoURL(), post.getLink(), post.getPrivacy(), post.getCreateAt(), post.getUpdateAt())).toList();
+            List<PostOfUserResponse> data = posts.stream()
+                    .map(post -> new PostOfUserResponse(post.getId(), post.getContent(), post.getImageURL(),
+                            post.getVideoURL(), post.getLink(), post.getPrivacy(), post.getCreateAt(),
+                            post.getUpdateAt())).toList();
 
             ListPostResponse response = new ListPostResponse(true, "Lấy thành công", data);
             redisTemplate.opsForValue().set("post:user:" + userId, response, 15, TimeUnit.MINUTES);

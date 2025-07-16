@@ -28,9 +28,7 @@ import com.example.demo.service.UserService;
 
 import lombok.RequiredArgsConstructor;
 
-@Service
-@RequiredArgsConstructor
-public class UserServiceImpl implements UserService {
+@Service @RequiredArgsConstructor public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
@@ -42,17 +40,11 @@ public class UserServiceImpl implements UserService {
     public void handleUserRegister(UserRegisteredEvent event) {
         System.out.println("Received event from Kafka: " + event);
         try {
-            User user = User.builder()
-                    .id(event.getId())
-                    .fName(event.getFName())
-                    .lName(event.getLName())
-                    .dob(event.getDob())
-                    .gender(event.getGender() != null ? Gender.valueOf(event.getGender()) : null)
-                    .avatar(event.getAvatar())
-                    .createdAt(event.getCreatedAt())
-                    .email(event.getEmail())
-                    .phone(event.getPhone())
-                    .build();
+            User user =
+                    User.builder().id(event.getId()).fName(event.getFName()).lName(event.getLName()).dob(event.getDob())
+                            .gender(event.getGender() != null ? Gender.valueOf(event.getGender()) : null)
+                            .avatar(event.getAvatar()).createdAt(event.getCreatedAt()).email(event.getEmail())
+                            .phone(event.getPhone()).build();
             if (!userRepository.existsById(user.getId())) {
                 userRepository.save(user);
             }
@@ -63,37 +55,27 @@ public class UserServiceImpl implements UserService {
         }
     }
 
-    @Override
-    public UserResponse update(String id, UpdateUserRequest req) {
+    @Override public UserResponse update(String id, UpdateUserRequest req) {
         User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
 
-        if (req.getFName() != null)
-            user.setFName(req.getFName());
-        if (req.getLName() != null)
-            user.setLName(req.getLName());
-        if (req.getGender() != null)
-            user.setGender(req.getGender());
-        if (req.getBio() != null)
-            user.setBio(req.getBio());
-        if (req.getDob() != null)
-            user.setDob(req.getDob());
+        if (req.getFName() != null) user.setFName(req.getFName());
+        if (req.getLName() != null) user.setLName(req.getLName());
+        if (req.getGender() != null) user.setGender(req.getGender());
+        if (req.getBio() != null) user.setBio(req.getBio());
+        if (req.getDob() != null) user.setDob(req.getDob());
 
         User savaUser = userRepository.save(user);
         redisTemplate.opsForValue().set("user:" + id, savaUser, 10, TimeUnit.MINUTES);
 
-        UserUpdatedNameEvent event = new UserUpdatedNameEvent(
-                savaUser.getId(),
-                savaUser.getFName(),
-                savaUser.getLName(),
-                savaUser.getAvatar()
-        );
+        UserUpdatedNameEvent event =
+                new UserUpdatedNameEvent(savaUser.getId(), savaUser.getFName(), savaUser.getLName(),
+                        savaUser.getAvatar());
 
         kafkaTemplate.send("user-updated_name", event);
         return new UserResponse(true, "Cập nhật thành công", convertTPublicDTO(savaUser));
     }
 
-    @Override
-    public void delete(String id) {
+    @Override public void delete(String id) {
         userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
         userRepository.deleteById(id);
 
@@ -102,39 +84,37 @@ public class UserServiceImpl implements UserService {
         kafkaTemplate.send("user-deleted", new UserDeleteEvent(id));
     }
 
-    @Override
-    public UserResponse getById(String id) {
+    @Override public UserResponse getById(String id) {
         User user = (User) redisTemplate.opsForValue().get("user:" + id);
-        if(user == null){
+        if (user == null) {
             user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
             redisTemplate.opsForValue().set("user:" + id, user, 10, TimeUnit.MINUTES);
         }
         return new UserResponse(true, "Lấy thành công", convertTPublicDTO(user));
     }
 
-    @Override
-    public List<UserResponse> getAll() {
+    @Override public List<UserResponse> getAll() {
         return userRepository.findAll().stream()
                 .map(user -> new UserResponse(true, "Lấy thành công", convertTPublicDTO(user)))
                 .collect(Collectors.toList());
     }
 
-    @Override
-    public List<UserResponse> findByFirstName(String fName) {
-        return userRepository.findByFirstName(fName).stream()
-                .map(user -> new UserResponse(true, "Lấy thành công", convertTPublicDTO(user)))
-                .collect(Collectors.toList());
+    @Override public List<UserResponse> findByUserByName(String keyword) {
+        List<UserPublicDTO> cached = (List<UserPublicDTO>) redisTemplate.opsForValue().get("user:search:" + keyword);
+        if (cached != null) {
+            return cached.stream().map(dto -> new UserResponse(true, "Lấy thành công", dto))
+                    .collect(Collectors.toList());
+        } else {
+            List<User> getUser = userRepository.findUserByNameOrPart(keyword);
+            List<UserPublicDTO> dto = getUser.stream().map(this::convertTPublicDTO).collect(Collectors.toList());
+
+            redisTemplate.opsForValue().set("user:search:" + keyword, dto, 15, TimeUnit.MINUTES);
+            return getUser.stream().map(user -> new UserResponse(true, "Lấy thành công", convertTPublicDTO(user)))
+                    .collect(Collectors.toList());
+        }
     }
 
-    @Override
-    public List<UserResponse> findByLastName(String lName) {
-        return userRepository.findByLastName(lName).stream()
-                .map(user -> new UserResponse(true, "Lấy thành công", convertTPublicDTO(user)))
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public UserPrivateProfile getMyInfo() {
+    @Override public UserPrivateProfile getMyInfo() {
         String id = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
         return new UserPrivateProfile(true, "Lấy thành công", convertTPublicDTO(user), user.getEmail(),
@@ -142,19 +122,11 @@ public class UserServiceImpl implements UserService {
     }
 
     private UserPublicDTO convertTPublicDTO(User user) {
-        return new UserPublicDTO(
-                user.getId(),
-                user.getFName(),
-                user.getLName(),
-                user.getAvatar(),
-                user.getBio(),
-                user.getBackground(),
-                user.getDob(),
-                user.getGender());
+        return new UserPublicDTO(user.getId(), user.getFName(), user.getLName(), user.getAvatar(), user.getBio(),
+                user.getBackground(), user.getDob(), user.getGender());
     }
 
-    @Override
-    public UserResponse updateAvatar(String id, MultipartFile file) {
+    @Override public UserResponse updateAvatar(String id, MultipartFile file) {
         User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
         try {
             String avatar = cloudinaryConfig.uploadFile(file);
@@ -163,19 +135,15 @@ public class UserServiceImpl implements UserService {
             throw new UserException("Cập nhật ảnh đại diện thất bại");
         }
         User savaUser = userRepository.save(user);
-        UserUpdatedNameEvent event = new UserUpdatedNameEvent(
-                savaUser.getId(),
-                savaUser.getFName(),
-                savaUser.getLName(),
-                savaUser.getAvatar()
-        );
+        UserUpdatedNameEvent event =
+                new UserUpdatedNameEvent(savaUser.getId(), savaUser.getFName(), savaUser.getLName(),
+                        savaUser.getAvatar());
         kafkaTemplate.send("user-updated_name", event);
 
         return new UserResponse(true, "Cập nhật thành công", convertTPublicDTO(userRepository.save(user)));
     }
 
-    @Override
-    public UserResponse updateBackground(String id, MultipartFile file) {
+    @Override public UserResponse updateBackground(String id, MultipartFile file) {
         User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
         try {
             String background = cloudinaryConfig.uploadFile(file);
@@ -186,8 +154,7 @@ public class UserServiceImpl implements UserService {
         return new UserResponse(true, "Cập nhật thành công", convertTPublicDTO(userRepository.save(user)));
     }
 
-    @Override
-    public void lockProfile(String id) {
+    @Override public void lockProfile(String id) {
         User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
         // Tính ngày mở khóa tài khoản là 90 ngày
         LocalDate unlockDate = LocalDate.now().plusDays(90);
@@ -200,8 +167,7 @@ public class UserServiceImpl implements UserService {
         kafkaTemplate.send("user-locked", new UserLockedEvent(id, unlockDate));
     }
 
-    @Override
-    public void unlockProfile(String id) {
+    @Override public void unlockProfile(String id) {
         User user = userRepository.findById(id).orElseThrow(() -> new UserException("User không tồn tại"));
 
         user.setIsLocked(false);
@@ -213,9 +179,7 @@ public class UserServiceImpl implements UserService {
         kafkaTemplate.send("user-unlocked", new UserUnlockedEvent(id));
     }
 
-    @Override
-    @Scheduled(cron = "0 0 0 * * ?")
-    public void autoUnlockExpiredAccounts() {
+    @Override @Scheduled(cron = "0 0 0 * * ?") public void autoUnlockExpiredAccounts() {
         LocalDate today = LocalDate.now();
         List<User> expiredAccounts = userRepository.findByLockedTrueAndLockedUntilBefore(today);
         for (User user : expiredAccounts) {
@@ -233,7 +197,7 @@ public class UserServiceImpl implements UserService {
     @KafkaListener(topics = "user-unlocked", groupId = "User", containerFactory = "kafkaListenerContainerFactory")
     public void handleUserUnlocked(UserUnlockedEvent event) {
         User user = userRepository.findById(event.getId()).orElse(null);
-        if(user !=null){
+        if (user != null) {
             user.setIsLocked(false);
             user.setLockedUntil(null);
 
@@ -241,15 +205,14 @@ public class UserServiceImpl implements UserService {
         }
     }
 
-    @Override
-    @KafkaListener(topics = "user_phone_email-change")
+    @Override @KafkaListener(topics = "user_phone_email-change")
     public void handleUserUpdate(UserUpdatedPhoneEmailEvent event) {
         User user = userRepository.findById(event.getId()).orElse(null);
-        if(user != null){
-            if(event.getEmail() != null){
+        if (user != null) {
+            if (event.getEmail() != null) {
                 user.setEmail(event.getEmail());
             }
-            if(event.getPhone() != null){
+            if (event.getPhone() != null) {
                 user.setPhone(event.getPhone());
             }
             userRepository.save(user);

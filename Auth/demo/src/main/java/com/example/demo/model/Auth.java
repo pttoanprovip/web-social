@@ -2,6 +2,7 @@ package com.example.demo.model;
 
 import java.time.LocalDate;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -25,5 +26,6 @@ public class Auth {
 
     @Builder.Default
     private Boolean locked = false;
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate lockedUntil;
 }

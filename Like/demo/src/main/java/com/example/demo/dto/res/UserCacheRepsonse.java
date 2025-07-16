@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserCacheRepsone {
+public class UserCacheRepsonse {
     private boolean success;
     private String message;
     public UserCache data;

@@ -2,6 +2,7 @@ package com.example.demo.model;
 
 import java.time.LocalDate;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 
 import com.example.demo.enums.Privacy;
@@ -29,6 +30,8 @@ public class Post {
     private String videoURL;
     private String link;
     private Privacy privacy;
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate createAt;
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate updateAt;
 }

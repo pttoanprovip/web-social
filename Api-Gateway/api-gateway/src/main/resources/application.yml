@@ -11,6 +11,10 @@ spring:
           uri: lb://auth-service
           predicates:
             - Path=/auth/**
+
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
             - Path=/upload/**
 
         - id: user-service
@@ -42,4 +46,8 @@ eureka:
 
 logging:
   level:
-    org.springframework.cloud.gateway: DEBUG
+    root: INFO
+    reactor.netty.http.client: DEBUG
+    org.springframework.web.reactive.function.client: DEBUG
+    org.springframework.web: DEBUG
+    com.example: DEBUG
